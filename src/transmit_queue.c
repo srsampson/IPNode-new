@@ -28,7 +28,7 @@ static pthread_mutex_t transmit_queue_mutex;
 static pthread_mutex_t wake_up_mutex; /* Required by cond_wait. */
 static pthread_cond_t wake_up_cond;   /* Notify transmit thread when queue not empty. */
 
-static bool xmit_thread_is_waiting;
+static volatile bool xmit_thread_is_waiting = false;
 
 static int transmit_queue_count(int, char *, char *, int);
 

@@ -8,6 +8,8 @@
  *
  * Fork by Steve Sampson, K5OKC, May 2024
  * 
+ * Changes suggested by Brent Petit Oct 29, 2023
+ * 
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -15,6 +17,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 #include <errno.h>
 
@@ -24,12 +27,14 @@
 #include "receive_queue.h"
 
 static struct rx_queue_item_s *queue_head = NULL;
+static struct rx_queue_item_s *queue_tail = NULL;
+static int queue_length = 0;
 
 static pthread_mutex_t rx_queue_mutex;
 static pthread_cond_t wake_up_cond;
-static pthread_mutex_t wake_up_mutex;
 
-static volatile int recv_thread_is_waiting = 0;
+static volatile bool recv_thread_is_waiting = false;
+
 static volatile int s_new_count = 0;
 static volatile int s_delete_count = 0;
 static volatile int s_cdata_new_count = 0;
@@ -37,11 +42,10 @@ static volatile int s_cdata_delete_count = 0;
 
 void rx_queue_init()
 {
-    queue_head = NULL;
+	queue_head = queue_tail = NULL;
+	queue_length = 0;
 
-    int err = pthread_mutex_init(&wake_up_mutex, NULL);
-
-    err = pthread_mutex_init(&rx_queue_mutex, NULL);
+    int err = pthread_mutex_init(&rx_queue_mutex, NULL);
 
     if (err != 0)
     {
@@ -57,13 +61,11 @@ void rx_queue_init()
         exit(1);
     }
 
-    recv_thread_is_waiting = 0;
+    recv_thread_is_waiting = false;
 }
 
 static void append_to_rx_queue(struct rx_queue_item_s *pnew)
 {
-    int queue_length = 0;
-
     pnew->nextp = NULL;
 
     int err = pthread_mutex_lock(&rx_queue_mutex);
@@ -76,21 +78,28 @@ static void append_to_rx_queue(struct rx_queue_item_s *pnew)
 
     if (queue_head == NULL)
     {
-        queue_head = pnew;
+        queue_head = queue_tail = pnew;
         queue_length = 1;
-    }
-    else
+    } else {
+	  queue_tail->nextp = pnew;
+	  queue_tail = pnew;
+	  queue_length++;
+	}
+
+    if (queue_length > 15)
     {
-        queue_length = 2; /* head + new one */
-        struct rx_queue_item_s *plast = queue_head;
+        fprintf(stderr, "rx_queue append_to_rx_queue: receive queue is out of control. length=%d.\n", queue_length);
+    }
 
-        while (plast->nextp != NULL)
+    if (recv_thread_is_waiting == true)
+    {
+        err = pthread_cond_signal(&wake_up_cond);
+
+        if (err != 0)
         {
-            plast = plast->nextp;
-            queue_length++;
+            fprintf(stderr, "rx_queue append_to_rx_queue: pthread_cond_signal err=%d", err);
+            exit(1);
         }
-
-        plast->nextp = pnew;
     }
 
     err = pthread_mutex_unlock(&rx_queue_mutex);
@@ -99,39 +108,6 @@ static void append_to_rx_queue(struct rx_queue_item_s *pnew)
     {
         fprintf(stderr, "rx_queue append_to_rx_queue: pthread_mutex_unlock err=%d", err);
         exit(1);
-    }
-
-    if (queue_length > 10)
-    {
-        fprintf(stderr, "rx_queue append_to_rx_queue: receive queue is out of control. length=%d.\n", queue_length);
-    }
-
-    if (recv_thread_is_waiting)
-    {
-
-        err = pthread_mutex_lock(&wake_up_mutex);
-
-        if (err != 0)
-        {
-            fprintf(stderr, "rx_queue append_to_rx_queue: pthread_mutex_lock wu err=%d", err);
-            exit(1);
-        }
-
-        err = pthread_cond_signal(&wake_up_cond);
-
-        if (err != 0)
-        {
-            fprintf(stderr, "rx_queue append_to_rx_queue: pthread_cond_signal err=%d", err);
-            exit(1);
-        }
-
-        err = pthread_mutex_unlock(&wake_up_mutex);
-
-        if (err != 0)
-        {
-            fprintf(stderr, "rx_queue append_to_rx_queue: pthread_mutex_unlock wu err=%d", err);
-            exit(1);
-        }
     }
 }
 
@@ -166,6 +142,12 @@ void rx_queue_channel_busy(int activity, int status)
     if (activity == OCTYPE_PTT || activity == OCTYPE_DCD)
     {
         struct rx_queue_item_s *pnew = (struct rx_queue_item_s *)calloc(1, sizeof(struct rx_queue_item_s));
+    
+        if (pnew == NULL) {
+	        fprintf(stderr, "rx_queue_channel_busy: Out of memory.\n");
+	        exit (1);
+    	}
+
         s_new_count++;
 
         pnew->type = RXQ_CHANNEL_BUSY;
@@ -182,6 +164,12 @@ void rx_queue_channel_busy(int activity, int status)
 void rx_queue_seize_confirm()
 {
     struct rx_queue_item_s *pnew = (struct rx_queue_item_s *)calloc(1, sizeof(struct rx_queue_item_s));
+	
+    if (pnew == NULL) {
+	  fprintf(stderr, "rx_queue_seize_confirm: Out of memory.\n");
+	  exit (1);
+	}
+    
     s_new_count++;
 
     pnew->type = RXQ_SEIZE_CONFIRM;
@@ -192,18 +180,18 @@ void rx_queue_seize_confirm()
 int rx_queue_wait_while_empty(double timeout)
 {
     int timed_out_result = 0;
+    
+    int err = pthread_mutex_lock(&rx_queue_mutex);
+
+    if (err != 0)
+    {
+        fprintf(stderr, "rx_queue_wait_while_empty: pthread_mutex_lock wu err=%d", err);
+        exit(1);
+    }
 
     if (queue_head == NULL)
     {
-        int err = pthread_mutex_lock(&wake_up_mutex);
-
-        if (err != 0)
-        {
-            fprintf(stderr, "rx_queue_wait_while_empty: pthread_mutex_lock wu err=%d", err);
-            exit(1);
-        }
-
-        recv_thread_is_waiting = 1;
+        recv_thread_is_waiting = true;
 
         if (timeout != 0.0)
         {
@@ -212,7 +200,7 @@ int rx_queue_wait_while_empty(double timeout)
             abstime.tv_sec = (time_t)(long)timeout;
             abstime.tv_nsec = (long)((timeout - (long)abstime.tv_sec) * 1000000000.0);
 
-            err = pthread_cond_timedwait(&wake_up_cond, &wake_up_mutex, &abstime);
+            err = pthread_cond_timedwait(&wake_up_cond, &rx_queue_mutex, &abstime);
 
             if (err == ETIMEDOUT)
             {
@@ -221,18 +209,18 @@ int rx_queue_wait_while_empty(double timeout)
         }
         else
         {
-            err = pthread_cond_wait(&wake_up_cond, &wake_up_mutex);
+            err = pthread_cond_wait(&wake_up_cond, &rx_queue_mutex);
         }
 
-        recv_thread_is_waiting = 0;
+        recv_thread_is_waiting = false;
+    }
+    
+    err = pthread_mutex_unlock(&rx_queue_mutex);
 
-        err = pthread_mutex_unlock(&wake_up_mutex);
-
-        if (err != 0)
-        {
-            fprintf(stderr, "rx_queue_wait_while_empty: pthread_mutex_unlock wu err=%d", err);
-            exit(1);
-        }
+    if (err != 0)
+    {
+        fprintf(stderr, "rx_queue_wait_while_empty: pthread_mutex_unlock wu err=%d", err);
+        exit(1);
     }
 
     return timed_out_result;
@@ -254,6 +242,11 @@ struct rx_queue_item_s *rx_queue_remove()
     {
         result = queue_head;
         queue_head = queue_head->nextp;
+        queue_length--;
+
+        if (queue_head == NULL) {
+	        queue_tail = NULL;
+	    }
     }
 
     err = pthread_mutex_unlock(&rx_queue_mutex);
@@ -271,6 +264,7 @@ void rx_queue_delete(struct rx_queue_item_s *pitem)
 {
     if (pitem == NULL)
     {
+        fprintf(stderr, "rx_queue_delete() given NULL pointer.\n");
         return;
     }
 
