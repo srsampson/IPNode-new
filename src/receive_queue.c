@@ -7,9 +7,9 @@
  * Copyright (C) 2011-2021 John Langner
  *
  * Fork by Steve Sampson, K5OKC, May 2024
- * 
+ *
  * Changes suggested by Brent Petit Oct 29, 2023
- * 
+ *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -42,8 +42,8 @@ static volatile int s_cdata_delete_count = 0;
 
 void rx_queue_init()
 {
-	queue_head = queue_tail = NULL;
-	queue_length = 0;
+    queue_head = queue_tail = NULL;
+    queue_length = 0;
 
     int err = pthread_mutex_init(&rx_queue_mutex, NULL);
 
@@ -80,11 +80,13 @@ static void append_to_rx_queue(struct rx_queue_item_s *pnew)
     {
         queue_head = queue_tail = pnew;
         queue_length = 1;
-    } else {
-	  queue_tail->nextp = pnew;
-	  queue_tail = pnew;
-	  queue_length++;
-	}
+    }
+    else
+    {
+        queue_tail->nextp = pnew;
+        queue_tail = pnew;
+        queue_length++;
+    }
 
     if (queue_length > 15)
     {
@@ -142,11 +144,12 @@ void rx_queue_channel_busy(int activity, int status)
     if (activity == OCTYPE_PTT || activity == OCTYPE_DCD)
     {
         struct rx_queue_item_s *pnew = (struct rx_queue_item_s *)calloc(1, sizeof(struct rx_queue_item_s));
-    
-        if (pnew == NULL) {
-	        fprintf(stderr, "rx_queue_channel_busy: Out of memory.\n");
-	        exit (1);
-    	}
+
+        if (pnew == NULL)
+        {
+            fprintf(stderr, "rx_queue_channel_busy: Out of memory.\n");
+            exit(1);
+        }
 
         s_new_count++;
 
@@ -164,12 +167,13 @@ void rx_queue_channel_busy(int activity, int status)
 void rx_queue_seize_confirm()
 {
     struct rx_queue_item_s *pnew = (struct rx_queue_item_s *)calloc(1, sizeof(struct rx_queue_item_s));
-	
-    if (pnew == NULL) {
-	  fprintf(stderr, "rx_queue_seize_confirm: Out of memory.\n");
-	  exit (1);
-	}
-    
+
+    if (pnew == NULL)
+    {
+        fprintf(stderr, "rx_queue_seize_confirm: Out of memory.\n");
+        exit(1);
+    }
+
     s_new_count++;
 
     pnew->type = RXQ_SEIZE_CONFIRM;
@@ -180,7 +184,7 @@ void rx_queue_seize_confirm()
 int rx_queue_wait_while_empty(double timeout)
 {
     int timed_out_result = 0;
-    
+
     int err = pthread_mutex_lock(&rx_queue_mutex);
 
     if (err != 0)
@@ -214,7 +218,7 @@ int rx_queue_wait_while_empty(double timeout)
 
         recv_thread_is_waiting = false;
     }
-    
+
     err = pthread_mutex_unlock(&rx_queue_mutex);
 
     if (err != 0)
@@ -244,9 +248,10 @@ struct rx_queue_item_s *rx_queue_remove()
         queue_head = queue_head->nextp;
         queue_length--;
 
-        if (queue_head == NULL) {
-	        queue_tail = NULL;
-	    }
+        if (queue_head == NULL)
+        {
+            queue_tail = NULL;
+        }
     }
 
     err = pthread_mutex_unlock(&rx_queue_mutex);
