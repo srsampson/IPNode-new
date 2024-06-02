@@ -49,7 +49,8 @@ static complex float m_rxPhase;
 static complex float m_rxRect;
 static complex float recvBlock[8]; // 8 CYCLES per symbol
 
-static float m_offset_freq;
+static float m_frequency_error;
+static float m_timing_error;
 
 static bool dcdDetect;
 
@@ -162,7 +163,8 @@ static void processSymbols(float csamples[])
     /*
      * Detected frequency error (for external display maybe)
      */
-    m_offset_freq = (get_frequency() * RS / TAU); // convert radians to Hz at symbol rate
+    m_frequency_error = (get_frequency() * RS / TAU); // convert radians to Hz at symbol rate
+    m_timing_error = get_error(); // get timing error from ted
 }
 
 /*
@@ -246,6 +248,9 @@ void rx_init(struct audio_s *pa)
     m_rxRect = cmplxconj((TAU * CENTER) / FS);
     m_rxPhase = cmplx(0.0f);
 
+    m_frequency_error = 0.0f;
+    m_timing_error = 0.0f;
+
     memset(D, 0, sizeof(struct demodulator_state_s));
 
     D->quick_attack = 0.080f * 0.2f;
@@ -272,7 +277,12 @@ int demod_get_audio_level()
     return (int)((D->alevel_rec_peak - D->alevel_rec_valley) * 50.0f + 0.5f);
 }
 
-float get_offset_freq()
+float get_frequency_error()
 {
-    return m_offset_freq;
+    return m_frequency_error;
+}
+
+float get_timing_error()
+{
+    return m_timing_error;
 }

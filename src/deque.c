@@ -49,7 +49,8 @@ static node *create_node(void *data)
  * create_deque
  *
  * Creates a deque by allocating memory for it on the heap
- *
+ * This is used by the timing error detection algorithm
+ * 
  * @return an empty deque
  */
 deque *create_deque(void)

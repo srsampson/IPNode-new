@@ -38,7 +38,8 @@ extern "C"
     int demod_get_audio_level(void);
     bool get_dcd_detect(void);
     void set_dcd_detect(bool);
-    float get_offset_freq(void);
+    float get_frequency_error(void);
+    float get_timing_error(void);
 
 #ifdef __cplusplus
 }

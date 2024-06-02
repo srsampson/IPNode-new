@@ -70,31 +70,30 @@ static void advance_input_clock()
  */
 void sync_reset()
 {
-    complex float data[1] = { CMPLXF(0.0f, 0.0f) };
-
     d_error = 0.0f;
     d_prev_error = 0.0f;
 
     empty_deque(d_input);
-    push_front(d_input, data);
-    push_front(d_input, data);
-    push_front(d_input, data);  // push 3 values (previous, current, middle)
 
+    // push 3 zero values (previous, current, middle)
+    push_front(d_input, (complex float *) calloc(1, sizeof (complex float)));
+    push_front(d_input, (complex float *) calloc(1, sizeof (complex float)));
+    push_front(d_input, (complex float *) calloc(1, sizeof (complex float)));
     sync_reset_input_clock();
 }
 
 void create_timing_error_detector()
 {
-    complex float data[1] = { CMPLXF(0.0f, 0.0f) };
-
     d_error = 0.0f;
     d_prev_error = 0.0f;
     d_inputs_per_symbol = 2; // The input samples per symbol required
 
     d_input = create_deque();
-    push_front(d_input, data);
-    push_front(d_input, data);
-    push_front(d_input, data);  // push 3 values (previous, current, middle)
+
+    // push 3 zero values (previous, current, middle)
+    push_front(d_input, (complex float *) calloc(1, sizeof (complex float)));
+    push_front(d_input, (complex float *) calloc(1, sizeof (complex float)));
+    push_front(d_input, (complex float *) calloc(1, sizeof (complex float)));
     
     sync_reset_input_clock();
 }
