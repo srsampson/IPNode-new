@@ -96,13 +96,13 @@ Simple Service Discovery Protocol
 ### Theory - Phase-Shift Keying
 A trend in Amateur Radio has been narrow bandwidth modes. Recently the FCC finally agreed to expand the bandwidth at HF to 2.8 kHz, and to remove the Symbol Rate limits on data mode (phone mode had no limits) These changes making way to future experimentation and enjoyment of the spectrum.  
 
-At VHF and UHF the radio manufacturers in the past, seem to have aligned themselves with commercial Land Mobile Radio (LMR), and its Narrow Band Frequency-Shift Keying (FSK). This article begins a series where Wideband mode is the goal, and Phase-Shift Keying (PSK) is the digital modulation technique favored.  
+At VHF and UHF the radio manufacturers in the past, seem to have aligned themselves with commercial Land Mobile Radio (LMR), and its Narrow Band Frequency-Shift Keying (FSK). This modems goal is wideband Phase-Shift Keying (PSK).  
 
-PSK is easy to modulate, but much more difficult to receive. The two technical difficulties are Frequency Error, and Timing Error. The receiver must align itself to the transmitter to very small errors in both frequency and time to successfully decode the transmitted bits.  
+PSK is easy to modulate, but much more difficult to receive. The two technical difficulties are Frequency Error, and Timing Error. The receiver must align itself to the transmitter with very small errors in both frequency and time to successfully decode the transmitted bits.  
 
 The number of research papers and patents applied for and issued, attest to the difficulties and acceptable solutions designed to effect digital communications.
 ### Theory - Carrier Tracking Loops
-The two most popular phase-shift keying modes are Binary and Quaternary (Quadrature). Binary produces one bit per symbol received, while Quadrature produces two bits per symbol. In this article we will discuss the Quadrature or QPSK receiver, as it is by far the most popular mode from HF to UHF radio bands.  
+The two most popular phase-shift keying modes are Binary and Quaternary (Quadrature). Binary produces one bit per symbol received, while Quadrature produces two bits per symbol. In this modem we target Quadrature or QPSK, as it is by far the most popular mode from HF to UHF radio bands.  
 
 It should be noted here, that the Timing Error is generally corrected first, before the frequency error. That being known as a Timing Error Detector, or TED.  
 
