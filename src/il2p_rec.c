@@ -112,7 +112,7 @@ void il2p_rec_bit(int dbit)
         break;
 
     case IL2P_DECODE:
-        int corrected;
+        int corrected = 0;
 
         pp = il2p_decode_header_payload(F->uhdr, F->spayload, &corrected);
 
