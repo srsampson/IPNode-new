@@ -336,7 +336,7 @@ void config_init(char *fname, struct audio_s *p_audio_config, struct misc_config
                     }
                 }
 
-                if (!ax25_parse_addr(1, t, call_no_ssid, &ssid))
+                if (ax25_parse_addr(1, t, call_no_ssid, &ssid) == false)
                 {
                     fprintf(stderr, "Config file: Invalid value for MYCALL command on line %d.\n", line);
                     continue;

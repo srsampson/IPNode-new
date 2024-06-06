@@ -134,7 +134,7 @@ int il2p_decode_payload(uint8_t *received, int payload_size, uint8_t *payload_ou
     uint8_t *pout = payload_out;
 
     int decoded_length = 0;
-    int failed = 0;
+    bool failed = false;
 
     uint8_t corrected_block[255];
 
@@ -147,7 +147,7 @@ int il2p_decode_payload(uint8_t *received, int payload_size, uint8_t *payload_ou
         int e = il2p_decode_rs(pin, ipp.large_block_size, ipp.parity_symbols_per_block, corrected_block);
 
         if (e < 0)
-            failed = 1;
+            failed = true;
 
         *symbols_corrected += e;
 
@@ -168,7 +168,7 @@ int il2p_decode_payload(uint8_t *received, int payload_size, uint8_t *payload_ou
         int e = il2p_decode_rs(pin, ipp.small_block_size, ipp.parity_symbols_per_block, corrected_block);
 
         if (e < 0)
-            failed = 1;
+            failed = true;
 
         *symbols_corrected += e;
 
@@ -180,7 +180,7 @@ int il2p_decode_payload(uint8_t *received, int payload_size, uint8_t *payload_ou
         decoded_length += ipp.small_block_size;
     }
 
-    if (failed)
+    if (failed == true)
     {
         return -2;
     }

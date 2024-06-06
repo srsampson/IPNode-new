@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <time.h>
 #include <sys/termios.h>
@@ -46,12 +47,11 @@ static void get_access_to_gpio(const char *path)
     static int my_gid = -1;
     static gid_t my_groups[MAX_GROUPS];
     static int num_groups = 0;
-    static int first_time = 1;
+    static bool first_time = true;
 
     struct stat finfo;
     int i;
     char cmd[80];
-    int err;
 
     if (stat(path, &finfo) < 0)
     {
@@ -59,7 +59,7 @@ static void get_access_to_gpio(const char *path)
         exit(1);
     }
 
-    if (first_time)
+    if (first_time == true)
     {
         my_uid = geteuid();
         my_gid = getegid();
@@ -71,7 +71,7 @@ static void get_access_to_gpio(const char *path)
             num_groups = 0;
         }
 
-        first_time = 0;
+        first_time = false;
     }
 
     /*
@@ -132,7 +132,7 @@ static void get_access_to_gpio(const char *path)
 
     snprintf(cmd, sizeof(cmd), "sudo chmod go+rw %s", path);
 
-    err = system(cmd);
+    int err = system(cmd);
 
     (void)err; // suppress warning about not using result.
 
@@ -161,7 +161,7 @@ static void get_access_to_gpio(const char *path)
     }
 }
 
-void export_gpio(int ot, int invert, int direction)
+void export_gpio(int ot, int invert, bool direction)
 {
     const char gpio_export_path[] = "/sys/class/gpio/export";
     char gpio_direction_path[80];
@@ -170,7 +170,7 @@ void export_gpio(int ot, int invert, int direction)
     int gpio_num;
     char *gpio_name;
 
-    if (direction)
+    if (direction == true)
     {
         gpio_num = save_audio_config_p->octrl[ot].out_gpio_num;
         gpio_name = save_audio_config_p->octrl[ot].out_gpio_name;
@@ -209,7 +209,7 @@ void export_gpio(int ot, int invert, int direction)
 
     struct dirent **file_list;
     int i;
-    int ok = 0;
+    bool ok = false;
 
     int num_files = scandir("/sys/class/gpio", &file_list, NULL, alphasort);
 
@@ -219,7 +219,7 @@ void export_gpio(int ot, int invert, int direction)
 
         snprintf(gpio_name, MAX_GPIO_NAME_LEN, "gpio%d", gpio_num);
         num_files = 0;
-        ok = 1;
+        ok = true;
     }
     else
     {
@@ -234,7 +234,7 @@ void export_gpio(int ot, int invert, int direction)
             if (strcmp(lookfor, file_list[i]->d_name) == 0)
             {
                 strlcpy(gpio_name, file_list[i]->d_name, MAX_GPIO_NAME_LEN);
-                ok = 1;
+                ok = true;
             }
         }
 
@@ -242,12 +242,12 @@ void export_gpio(int ot, int invert, int direction)
 
         snprintf(lookfor, sizeof(lookfor), "gpio%d_", gpio_num);
 
-        for (i = 0; i < num_files && !ok; i++)
+        for (i = 0; i < num_files && (ok == false); i++)
         {
             if (strncmp(lookfor, file_list[i]->d_name, strlen(lookfor)) == 0)
             {
                 strlcpy(gpio_name, file_list[i]->d_name, MAX_GPIO_NAME_LEN);
-                ok = 1;
+                ok = true;
             }
         }
 
@@ -283,9 +283,9 @@ void export_gpio(int ot, int invert, int direction)
 
     char gpio_val[8];
 
-    if (direction)
+    if (direction == true)
     {
-        if (invert)
+        if (invert == true)
         {
             strlcpy(gpio_val, "high", sizeof(gpio_val));
         }
@@ -330,38 +330,38 @@ void ptt_init(struct audio_s *audio_config_p)
         ptt_fd[ot] = INVALID_HANDLE_VALUE;
     }
 
-    int using_gpio = 0;
+    bool using_gpio = false;
 
     for (int ot = 0; ot < NUM_OCTYPES; ot++)
     {
-        using_gpio = 1;
+        using_gpio = true;
     }
 
     for (int ot = 0; ot < NUM_ICTYPES; ot++)
     {
-        using_gpio = 1;
+        using_gpio = true;
     }
 
-    if (using_gpio)
+    if (using_gpio == true)
     {
         get_access_to_gpio("/sys/class/gpio/export");
     }
 
     for (int ot = 0; ot < NUM_OCTYPES; ot++)
     { // output control type, PTT, DCD, CON, SYN ...
-        export_gpio(ot, audio_config_p->octrl[ot].ptt_invert, 1);
+        export_gpio(ot, audio_config_p->octrl[ot].ptt_invert, true);
     }
 
     for (int it = 0; it < NUM_ICTYPES; it++)
     { // input control type
-        export_gpio(it, audio_config_p->ictrl[it].inh_invert, 0);
+        export_gpio(it, audio_config_p->ictrl[it].inh_invert, false);
     }
 }
 
-void ptt_set(int ot, int ptt_signal)
+void ptt_set(int ot, bool ptt_signal)
 {
 #ifdef DEBUG_TX
-    int ptt = ptt_signal;
+    bool ptt = ptt_signal;
 
     rx_queue_channel_busy(ot, ptt_signal);
 
@@ -449,7 +449,7 @@ void ptt_term()
 #ifdef DEBUG_TX
     for (int ot = 0; ot < NUM_OCTYPES; ot++)
     {
-        ptt_set(ot, 0);
+        ptt_set(ot, false);
     }
 
     for (int ot = 0; ot < NUM_OCTYPES; ot++)

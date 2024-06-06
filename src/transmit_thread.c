@@ -359,7 +359,7 @@ static void tx_frames(int prio, packet_t pp)
  
     double time_ptt = dtime_now();
 
-    ptt_set(OCTYPE_PTT, 1);
+    ptt_set(OCTYPE_PTT, true);
 
     rx_queue_seize_confirm();
 
@@ -454,5 +454,5 @@ static void tx_frames(int prio, packet_t pp)
         SLEEP_MS(wait_more);
     }
 
-    ptt_set(OCTYPE_PTT, 0);
+    ptt_set(OCTYPE_PTT, false);
 }

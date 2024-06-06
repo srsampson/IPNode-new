@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
 #include <bsd/bsd.h>
@@ -24,7 +25,7 @@
 #define CLEAR_LAST_ADDR_FLAG this_p->frame_data[2 * 7 - 1] &= ~SSID_LAST_MASK
 #define SET_LAST_ADDR_FLAG this_p->frame_data[2 * 7 - 1] |= SSID_LAST_MASK
 
-static int set_addrs(packet_t, char[][AX25_MAX_ADDR_LEN], cmdres_t);
+static bool set_addrs(packet_t, char[][AX25_MAX_ADDR_LEN], cmdres_t);
 
 static volatile int new_count = 0;
 static volatile int delete_count = 0;
@@ -86,7 +87,7 @@ packet_t ax25_from_frame(uint8_t *fbuf, int flen)
 
 static const char *position_name[1 + AX25_ADDRS] = {"Destination", "Source"};
 
-int ax25_parse_addr(int position, char *in_addr, char *out_addr, int *out_ssid)
+bool ax25_parse_addr(int position, char *in_addr, char *out_addr, int *out_ssid)
 {
     char sstr[8];
 
@@ -96,7 +97,7 @@ int ax25_parse_addr(int position, char *in_addr, char *out_addr, int *out_ssid)
     if (strlen(in_addr) == 0)
     {
         fprintf(stderr, "%sAddress \"%s\" is empty.\n", position_name[position], in_addr);
-        return 0;
+        return false;
     }
 
     char *p = in_addr;
@@ -107,13 +108,13 @@ int ax25_parse_addr(int position, char *in_addr, char *out_addr, int *out_ssid)
         if (i >= 6)
         {
             fprintf(stderr, "%sAddress is too long. \"%s\" has more than 6 characters.\n", position_name[position], in_addr);
-            return 0;
+            return false;
         }
 
         if (!isalnum(*p))
         {
             fprintf(stderr, "%sAddress, \"%s\" contains character other than letter or digit in character position %d.\n", position_name[position], in_addr, (int)(long)(p - in_addr) + 1);
-            return 0;
+            return false;
         }
 
         out_addr[i++] = *p;
@@ -122,7 +123,7 @@ int ax25_parse_addr(int position, char *in_addr, char *out_addr, int *out_ssid)
         if (islower(*p))
         {
             fprintf(stderr, "%sAddress has lower case letters. \"%s\" must be all upper case.\n", position_name[position], in_addr);
-            return 0;
+            return false;
         }
     }
 
@@ -136,7 +137,7 @@ int ax25_parse_addr(int position, char *in_addr, char *out_addr, int *out_ssid)
             if (j >= 2)
             {
                 fprintf(stderr, "%sSSID is too long. SSID part of \"%s\" has more than 2 characters.\n", position_name[position], in_addr);
-                return 0;
+                return false;
             }
 
             sstr[j++] = *p;
@@ -145,7 +146,7 @@ int ax25_parse_addr(int position, char *in_addr, char *out_addr, int *out_ssid)
             if (!isdigit(*p))
             {
                 fprintf(stderr, "%sSSID must be digits. \"%s\" has letters in SSID.\n", position_name[position], in_addr);
-                return 0;
+                return false;
             }
         }
 
@@ -154,7 +155,7 @@ int ax25_parse_addr(int position, char *in_addr, char *out_addr, int *out_ssid)
         if (k < 0 || k > 15)
         {
             fprintf(stderr, "%sSSID out of range. SSID of \"%s\" not in range of 0 to 15.\n", position_name[position], in_addr);
-            return 0;
+            return false;
         }
 
         *out_ssid = k;
@@ -163,10 +164,10 @@ int ax25_parse_addr(int position, char *in_addr, char *out_addr, int *out_ssid)
     if (*p != '\0')
     {
         fprintf(stderr, "Invalid character \"%c\" found in %saddress \"%s\".\n", *p, position_name[position], in_addr);
-        return 0;
+        return false;
     }
 
-    return 1;
+    return true;
 }
 
 void ax25_get_addr_with_ssid(packet_t this_p, int n, char *station)
@@ -558,14 +559,14 @@ packet_t ax25_s_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
 {
     packet_t this_p;
     uint8_t *p;
-    int ctrl = 0;
+    uint8_t ctrl = 0;
 
     this_p = ax25_new();
 
     if (this_p == NULL)
         return (NULL);
 
-    if (!set_addrs(this_p, addrs, cr))
+    if (set_addrs(this_p, addrs, cr) == false)
     {
         fprintf(stderr, "Internal error in %s: Could not set addresses for S frame.\n", __func__);
         ax25_delete(this_p);
@@ -639,7 +640,7 @@ packet_t ax25_s_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
         }
     }
 
-    *p = '\0';
+    *p = 0;
 
     return this_p;
 }
@@ -648,14 +649,14 @@ packet_t ax25_i_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, int nr, int 
 {
     packet_t this_p;
     uint8_t *p;
-    int ctrl = 0;
+    uint8_t ctrl = 0;
 
     this_p = ax25_new();
 
     if (this_p == NULL)
         return (NULL);
 
-    if (!set_addrs(this_p, addrs, cr))
+    if (set_addrs(this_p, addrs, cr) == false)
     {
         fprintf(stderr, "Internal error in %s: Could not set addresses for I frame.\n", __func__);
         ax25_delete(this_p);
@@ -676,7 +677,7 @@ packet_t ax25_i_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, int nr, int 
 
     p = this_p->frame_data + this_p->frame_len;
 
-    ctrl = (nr << 5) | (ns << 1);
+    ctrl = (nr << 5) | (ns << 1); // TODO Can this overflow??
 
     if (pf)
         ctrl |= 0x10;
@@ -705,12 +706,12 @@ packet_t ax25_i_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, int nr, int 
         this_p->frame_len += info_len;
     }
 
-    *p = '\0';
+    *p = 0;
 
-    return (this_p);
+    return this_p;
 }
 
-static int set_addrs(packet_t pp, char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr)
+static bool set_addrs(packet_t pp, char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr)
 {
     for (int n = 0; n < 2; n++)
     {
@@ -718,10 +719,10 @@ static int set_addrs(packet_t pp, char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr)
         char oaddr[AX25_MAX_ADDR_LEN];
         int ssid;
 
-        int ok = ax25_parse_addr(n, addrs[n], oaddr, &ssid);
+        bool ok = ax25_parse_addr(n, addrs[n], oaddr, &ssid);
 
-        if (!ok)
-            return 0;
+        if (ok == false)
+            return false;
 
         // Fill in address.
 
@@ -757,5 +758,5 @@ static int set_addrs(packet_t pp, char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr)
         pp->frame_len += 7;
     }
 
-    return 1;
+    return true;
 }

@@ -15,6 +15,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <ctype.h>
 #include <math.h>
 #include <time.h>
@@ -67,11 +68,11 @@ typedef struct ax25_dlsm_s
     int vs;
     int va;
     int vr;
-    int layer_3_initiated;
-    int peer_receiver_busy;
-    int reject_exception;
-    int own_receiver_busy;
-    int acknowledge_pending;
+    bool layer_3_initiated;
+    bool peer_receiver_busy;
+    bool reject_exception;
+    bool own_receiver_busy;
+    bool acknowledge_pending;
     float srt;
     float t1v;
 
@@ -79,11 +80,11 @@ typedef struct ax25_dlsm_s
     S->t1v = g_misc_config_p->frack; \
     S->srt = S->t1v / 2.0f;
 
-    int radio_channel_busy;
+    bool radio_channel_busy;
     double t1_exp;
     double t1_paused_at;
     float t1_remaining_when_last_stopped;
-    int t1_had_expired;
+    bool t1_had_expired;
     double t3_exp;
 
 #define T3_DEFAULT 300.0
@@ -160,7 +161,7 @@ static void i_frame_continued(ax25_dlsm_t *, int, int, int, uint8_t *, int);
 static int is_ns_in_window(ax25_dlsm_t *, int);
 static void send_srej_frames(ax25_dlsm_t *, int *, int, int);
 static int resend_for_srej(ax25_dlsm_t *, int, uint8_t *, int);
-static void rr_rnr_frame(ax25_dlsm_t *, int, cmdres_t, int, int);
+static void rr_rnr_frame(ax25_dlsm_t *, bool, cmdres_t, int, int);
 static void rej_frame(ax25_dlsm_t *, cmdres_t, int, int);
 static void srej_frame(ax25_dlsm_t *, cmdres_t, int, int, uint8_t *, int);
 static void sabm_frame(ax25_dlsm_t *, int);
@@ -177,7 +178,7 @@ static void transmit_enquiry(ax25_dlsm_t *);
 static void select_t1_value(ax25_dlsm_t *);
 static void establish_data_link(ax25_dlsm_t *);
 static void set_version_2_0(ax25_dlsm_t *);
-static int is_good_nr(ax25_dlsm_t *, int);
+static bool is_good_nr(ax25_dlsm_t *, int);
 static void i_frame_pop_off_queue(ax25_dlsm_t *);
 static void discard_i_queue(ax25_dlsm_t *);
 static void invoke_retransmission(ax25_dlsm_t *, int);
@@ -190,7 +191,7 @@ static void enter_new_state(ax25_dlsm_t *, enum dlsm_state_e);
 
 static void start_t1(ax25_dlsm_t *);
 static void stop_t1(ax25_dlsm_t *);
-static int is_t1_running(ax25_dlsm_t *);
+static bool is_t1_running(ax25_dlsm_t *);
 static void pause_t1(ax25_dlsm_t *);
 static void resume_t1(ax25_dlsm_t *);
 static void start_t3(ax25_dlsm_t *);
@@ -222,7 +223,7 @@ static void i_frame_pop_off_queue(ax25_dlsm_t *S)
     switch (S->state)
     {
     case state_1_awaiting_connection:
-        if (S->layer_3_initiated)
+        if (S->layer_3_initiated == true)
         {
             cdata_t *txdata;
 
@@ -260,7 +261,7 @@ static void i_frame_pop_off_queue(ax25_dlsm_t *S)
 
             SET_VS(AX25MODULO(S->vs + 1)); // increment sequence of last sent.
 
-            S->acknowledge_pending = 0;
+            S->acknowledge_pending = false;
 
             STOP_T3;
             START_T1;
@@ -287,7 +288,7 @@ static void discard_i_queue(ax25_dlsm_t *S)
 
 static int next_stream_id = 0;
 
-static ax25_dlsm_t *get_link_handle(char addrs[AX25_ADDRS][AX25_MAX_ADDR_LEN], int client, int create)
+static ax25_dlsm_t *get_link_handle(char addrs[AX25_ADDRS][AX25_MAX_ADDR_LEN], int client, bool create)
 {
     ax25_dlsm_t *p;
 
@@ -322,7 +323,7 @@ static ax25_dlsm_t *get_link_handle(char addrs[AX25_ADDRS][AX25_MAX_ADDR_LEN], i
 
     // Could not find existing.  Should we create a new one?
 
-    if (create == 0)
+    if (create == false)
     {
         return (NULL);
     }
@@ -485,7 +486,7 @@ void lm_channel_busy(rxq_item_t *E)
         break;
     }
 
-    int busy = dcd_status | ptt_status;
+    bool busy = (dcd_status == true) || (ptt_status == true);
 
     /*
      * We know if the given radio channel is busy or not.
@@ -496,14 +497,14 @@ void lm_channel_busy(rxq_item_t *E)
 
     for (S = list_head; S != NULL; S = S->next)
     {
-        if (busy && !S->radio_channel_busy)
+        if ((busy == true) && (S->radio_channel_busy == false))
         {
-            S->radio_channel_busy = 1;
+            S->radio_channel_busy = true;
             PAUSE_T1;
         }
-        else if (!busy && S->radio_channel_busy)
+        else if (busy == false && S->radio_channel_busy == true)
         {
-            S->radio_channel_busy = 0;
+            S->radio_channel_busy = false;
             RESUME_T1;
         }
     }
@@ -529,9 +530,9 @@ void lm_seize_confirm(rxq_item_t *E)
 
             // Need an RR if we didn't have I frame send the necessary ack.
 
-            if (S->acknowledge_pending)
+            if (S->acknowledge_pending == true)
             {
-                S->acknowledge_pending = 0;
+                S->acknowledge_pending = false;
                 enquiry_response(S, frame_not_AX25, 0);
             }
 
@@ -552,7 +553,6 @@ void lm_data_indication(rxq_item_t *E)
     int ns;
     ax25_dlsm_t *S;
     int client_not_applicable = -1;
-    int n;
 
     if (E->pp == NULL)
     {
@@ -562,7 +562,7 @@ void lm_data_indication(rxq_item_t *E)
 
     // Copy addresses from frame into event structure.
 
-    for (n = 0; n < 2; n++)
+    for (int n = 0; n < 2; n++)
     {
         ax25_get_addr_with_ssid(E->pp, n, E->addrs[n]);
     }
@@ -641,12 +641,10 @@ void lm_data_indication(rxq_item_t *E)
 
     case frame_type_I: // Information
     {
-        int pid;
         uint8_t *info_ptr;
-        int info_len;
 
-        pid = ax25_get_pid(E->pp);
-        info_len = ax25_get_info(E->pp, &info_ptr);
+        int pid = ax25_get_pid(E->pp);
+        int info_len = ax25_get_info(E->pp, &info_ptr);
 
         i_frame(S, cr, pf, nr, ns, pid, (uint8_t *)info_ptr, info_len);
     }
@@ -667,9 +665,8 @@ void lm_data_indication(rxq_item_t *E)
     case frame_type_S_SREJ: // Selective Reject - Ask for selective frame(s) repeat
     {
         uint8_t *info_ptr;
-        int info_len;
 
-        info_len = ax25_get_info(E->pp, &info_ptr);
+        int info_len = ax25_get_info(E->pp, &info_ptr);
         srej_frame(S, cr, pf, nr, info_ptr, info_len);
     }
     break;
@@ -706,10 +703,8 @@ void lm_data_indication(rxq_item_t *E)
         break;
     }
 
-    if (S->i_frame_queue != NULL &&
-        (S->state == state_3_connected || S->state == state_4_timer_recovery) &&
-        (!S->peer_receiver_busy) &&
-        WITHIN_WINDOW_SIZE(S))
+    if (S->i_frame_queue != NULL && (S->state == state_3_connected || S->state == state_4_timer_recovery) &&
+        (S->peer_receiver_busy == false) && WITHIN_WINDOW_SIZE(S))
     {
 
         // S->acknowledge_pending = 1;
@@ -719,6 +714,8 @@ void lm_data_indication(rxq_item_t *E)
 
 static void i_frame(ax25_dlsm_t *S, cmdres_t cr, int p, int nr, int ns, int pid, uint8_t *info_ptr, int info_len)
 {
+    packet_t pp;
+
     switch (S->state)
     {
     case state_0_disconnected:
@@ -731,7 +728,7 @@ static void i_frame(ax25_dlsm_t *S, cmdres_t cr, int p, int nr, int ns, int pid,
             int f = p;
             int nopid = 0; // PID applies only for I and UI frames.
 
-            packet_t pp = ax25_u_frame(S->addrs, r, frame_type_U_DM, f, nopid, NULL, 0);
+            pp = ax25_u_frame(S->addrs, r, frame_type_U_DM, f, nopid, NULL, 0);
             lm_data_request(TQ_PRIO_1_LO, pp);
         }
         break;
@@ -750,7 +747,7 @@ static void i_frame(ax25_dlsm_t *S, cmdres_t cr, int p, int nr, int ns, int pid,
             int f = 1;
             int nopid = 0; // PID applies only for I and UI frames.
 
-            packet_t pp = ax25_u_frame(S->addrs, r, frame_type_U_DM, f, nopid, NULL, 0);
+            pp = ax25_u_frame(S->addrs, r, frame_type_U_DM, f, nopid, NULL, 0);
             lm_data_request(TQ_PRIO_1_LO, pp);
         }
         break;
@@ -761,7 +758,7 @@ static void i_frame(ax25_dlsm_t *S, cmdres_t cr, int p, int nr, int ns, int pid,
         if (info_len >= 0 && info_len <= AX25_MAX_INFO_LEN)
         {
 
-            if (is_good_nr(S, nr))
+            if (is_good_nr(S, nr) == true)
             {
                 check_i_frame_ackd(S, nr);
 
@@ -774,20 +771,19 @@ static void i_frame(ax25_dlsm_t *S, cmdres_t cr, int p, int nr, int ns, int pid,
                     enter_new_state(S, state_3_connected);
                 }
 
-                if (S->own_receiver_busy)
+                if (S->own_receiver_busy == true)
                 {
                     if (p == 1)
                     {
                         cmdres_t cr = cr_res;
                         int f = 1;
                         int nr = S->vr;
-                        packet_t pp;
 
                         pp = ax25_s_frame(S->addrs, cr, frame_type_S_RNR, nr, f, NULL, 0);
 
                         lm_data_request(TQ_PRIO_1_LO, pp);
 
-                        S->acknowledge_pending = 0;
+                        S->acknowledge_pending = false;
                     }
                 }
                 else
@@ -806,7 +802,7 @@ static void i_frame(ax25_dlsm_t *S, cmdres_t cr, int p, int nr, int ns, int pid,
             fprintf(stderr, "Stream %d: AX.25 Protocol Error O: Information part length, %d, not in range of 0 thru %d.\n", S->stream_id, info_len, AX25_MAX_INFO_LEN);
 
             establish_data_link(S);
-            S->layer_3_initiated = 0;
+            S->layer_3_initiated = false;
             enter_new_state(S, state_1_awaiting_connection);
         }
         break;
@@ -818,7 +814,7 @@ static void i_frame_continued(ax25_dlsm_t *S, int p, int ns, int pid, uint8_t *i
     if (ns == S->vr)
     {
         SET_VR(AX25MODULO(S->vr + 1));
-        S->reject_exception = 0;
+        S->reject_exception = false;
 
         dl_data_indication(S, pid, info_ptr, info_len);
 
@@ -846,32 +842,30 @@ static void i_frame_continued(ax25_dlsm_t *S, int p, int ns, int pid, uint8_t *i
             int f = 1;
             int nr = S->vr;       // Next expected sequence number.
             cmdres_t cr = cr_res; // response with F set to 1.
-            packet_t pp;
 
-            pp = ax25_s_frame(S->addrs, cr, frame_type_S_RR, nr, f, NULL, 0);
+            packet_t pp = ax25_s_frame(S->addrs, cr, frame_type_S_RR, nr, f, NULL, 0);
             lm_data_request(TQ_PRIO_1_LO, pp);
-            S->acknowledge_pending = 0;
+            S->acknowledge_pending = false;
         }
-        else if (!S->acknowledge_pending)
+        else if (S->acknowledge_pending == false)
         {
 
-            S->acknowledge_pending = 1;
+            S->acknowledge_pending = true;
 
             lm_seize_request();
         }
     }
-    else if (S->reject_exception)
+    else if (S->reject_exception == true)
     {
         if (p)
         {
             int f = 1;
             int nr = S->vr;       // Next expected sequence number.
             cmdres_t cr = cr_res; // response with F set to 1.
-            packet_t pp;
 
-            pp = ax25_s_frame(S->addrs, cr, frame_type_S_RR, nr, f, NULL, 0);
+            packet_t pp = ax25_s_frame(S->addrs, cr, frame_type_S_RR, nr, f, NULL, 0);
             lm_data_request(TQ_PRIO_1_LO, pp);
-            S->acknowledge_pending = 0;
+            S->acknowledge_pending = false;
         }
     }
     else
@@ -893,14 +887,13 @@ static void i_frame_continued(ax25_dlsm_t *S, int p, int ns, int pid, uint8_t *i
                 int f = 1;
                 enquiry_response(S, frame_type_I, f);
             }
-            else if (S->own_receiver_busy)
+            else if (S->own_receiver_busy == true)
             {
                 cmdres_t cr = cr_res; // send RNR response
                 int f = 0;            // we know p=0 here.
                 int nr = S->vr;
-                packet_t pp;
 
-                pp = ax25_s_frame(S->addrs, cr, frame_type_S_RNR, nr, f, NULL, 0);
+                packet_t pp = ax25_s_frame(S->addrs, cr, frame_type_S_RNR, nr, f, NULL, 0);
                 lm_data_request(TQ_PRIO_1_LO, pp);
             }
             else if (S->rxdata_by_ns[AX25MODULO(ns - 1)] == NULL)
@@ -951,9 +944,7 @@ static int is_ns_in_window(ax25_dlsm_t *S, int ns)
     int adjusted_ns = adjust_by_vr(ns);
     int adjusted_vrpk = adjust_by_vr(S->vr + 63); // 63 generous
 
-    int result = (adjusted_vr < adjusted_ns) && (adjusted_ns < adjusted_vrpk);
-
-    return result;
+    return (adjusted_vr < adjusted_ns) && (adjusted_ns < adjusted_vrpk);
 }
 
 static void send_srej_frames(ax25_dlsm_t *S, int *resend, int count, int allow_f1)
@@ -998,7 +989,7 @@ static void send_srej_frames(ax25_dlsm_t *S, int *resend, int count, int allow_f
 
         if (f)
         {
-            S->acknowledge_pending = 0;
+            S->acknowledge_pending = false;
         }
 
         if (nr < 0 || nr >= 8)
@@ -1013,7 +1004,7 @@ static void send_srej_frames(ax25_dlsm_t *S, int *resend, int count, int allow_f
     }
 }
 
-static void rr_rnr_frame(ax25_dlsm_t *S, int ready, cmdres_t cr, int pf, int nr)
+static void rr_rnr_frame(ax25_dlsm_t *S, bool ready, cmdres_t cr, int pf, int nr)
 {
     switch (S->state)
     {
@@ -1060,7 +1051,7 @@ static void rr_rnr_frame(ax25_dlsm_t *S, int ready, cmdres_t cr, int pf, int nr)
             check_need_for_response(S, ready ? frame_type_S_RR : frame_type_S_RNR, cr, pf);
         }
 
-        if (is_good_nr(S, nr))
+        if (is_good_nr(S, nr) == true)
         {
             check_i_frame_ackd(S, nr);
         }
@@ -1084,7 +1075,7 @@ static void rr_rnr_frame(ax25_dlsm_t *S, int ready, cmdres_t cr, int pf, int nr)
             STOP_T1;
             select_t1_value(S);
 
-            if (is_good_nr(S, nr))
+            if (is_good_nr(S, nr) == true)
             {
 
                 SET_VA(nr);
@@ -1099,7 +1090,7 @@ static void rr_rnr_frame(ax25_dlsm_t *S, int ready, cmdres_t cr, int pf, int nr)
                     invoke_retransmission(S, nr);
                     STOP_T3;
                     START_T1;
-                    S->acknowledge_pending = 0;
+                    S->acknowledge_pending = false;
                 }
             }
             else
@@ -1116,7 +1107,7 @@ static void rr_rnr_frame(ax25_dlsm_t *S, int ready, cmdres_t cr, int pf, int nr)
                 enquiry_response(S, ready ? frame_type_S_RR : frame_type_S_RNR, f);
             }
 
-            if (is_good_nr(S, nr))
+            if (is_good_nr(S, nr) == true)
             {
 
                 SET_VA(nr);
@@ -1146,7 +1137,6 @@ static void rr_rnr_frame(ax25_dlsm_t *S, int ready, cmdres_t cr, int pf, int nr)
 
 static void rej_frame(ax25_dlsm_t *S, cmdres_t cr, int pf, int nr)
 {
-
     switch (S->state)
     {
 
@@ -1184,11 +1174,11 @@ static void rej_frame(ax25_dlsm_t *S, cmdres_t cr, int pf, int nr)
 
     case state_3_connected:
 
-        S->peer_receiver_busy = 0;
+        S->peer_receiver_busy = false;
 
         check_need_for_response(S, frame_type_S_REJ, cr, pf);
 
-        if (is_good_nr(S, nr))
+        if (is_good_nr(S, nr) == true)
         {
             SET_VA(nr);
             STOP_T1;
@@ -1199,7 +1189,7 @@ static void rej_frame(ax25_dlsm_t *S, cmdres_t cr, int pf, int nr)
 
             // T3 is already stopped.
             START_T1;
-            S->acknowledge_pending = 0;
+            S->acknowledge_pending = false;
         }
         else
         {
@@ -1210,7 +1200,7 @@ static void rej_frame(ax25_dlsm_t *S, cmdres_t cr, int pf, int nr)
 
     case state_4_timer_recovery:
 
-        S->peer_receiver_busy = 0;
+        S->peer_receiver_busy = false;
 
         if (cr == cr_res && pf == 1)
         {
@@ -1218,7 +1208,7 @@ static void rej_frame(ax25_dlsm_t *S, cmdres_t cr, int pf, int nr)
             STOP_T1;
             select_t1_value(S);
 
-            if (is_good_nr(S, nr))
+            if (is_good_nr(S, nr) == true)
             {
 
                 SET_VA(nr);
@@ -1233,7 +1223,7 @@ static void rej_frame(ax25_dlsm_t *S, cmdres_t cr, int pf, int nr)
                     invoke_retransmission(S, nr);
                     STOP_T3;
                     START_T1;
-                    S->acknowledge_pending = 0;
+                    S->acknowledge_pending = false;
                 }
             }
             else
@@ -1250,7 +1240,7 @@ static void rej_frame(ax25_dlsm_t *S, cmdres_t cr, int pf, int nr)
                 enquiry_response(S, frame_type_S_REJ, f);
             }
 
-            if (is_good_nr(S, nr))
+            if (is_good_nr(S, nr) == true)
             {
 
                 SET_VA(nr);
@@ -1260,7 +1250,7 @@ static void rej_frame(ax25_dlsm_t *S, cmdres_t cr, int pf, int nr)
                     invoke_retransmission(S, nr);
                     STOP_T3;
                     START_T1;
-                    S->acknowledge_pending = 0;
+                    S->acknowledge_pending = false;
                 }
             }
             else
@@ -1275,7 +1265,6 @@ static void rej_frame(ax25_dlsm_t *S, cmdres_t cr, int pf, int nr)
 
 static void srej_frame(ax25_dlsm_t *S, cmdres_t cr, int f, int nr, uint8_t *info, int info_len)
 {
-
     switch (S->state)
     {
 
@@ -1286,9 +1275,9 @@ static void srej_frame(ax25_dlsm_t *S, cmdres_t cr, int f, int nr, uint8_t *info
 
     case state_3_connected:
 
-        S->peer_receiver_busy = 0;
+        S->peer_receiver_busy = false;
 
-        if (is_good_nr(S, nr))
+        if (is_good_nr(S, nr) == true)
         {
 
             if (f)
@@ -1305,7 +1294,7 @@ static void srej_frame(ax25_dlsm_t *S, cmdres_t cr, int f, int nr, uint8_t *info
             {
                 STOP_T3;
                 START_T1;
-                S->acknowledge_pending = 0;
+                S->acknowledge_pending = false;
             }
             // keep same state.
         }
@@ -1318,11 +1307,11 @@ static void srej_frame(ax25_dlsm_t *S, cmdres_t cr, int f, int nr, uint8_t *info
 
     case state_4_timer_recovery:
 
-        S->peer_receiver_busy = 0;
+        S->peer_receiver_busy = false;
         STOP_T1;
         select_t1_value(S);
 
-        if (is_good_nr(S, nr))
+        if (is_good_nr(S, nr) == true)
         {
 
             if (f)
@@ -1344,7 +1333,7 @@ static void srej_frame(ax25_dlsm_t *S, cmdres_t cr, int f, int nr, uint8_t *info
                 {
                     STOP_T3;
                     START_T1;
-                    S->acknowledge_pending = 0;
+                    S->acknowledge_pending = false;
                 }
             }
         }
@@ -1478,6 +1467,7 @@ static void sabm_frame(ax25_dlsm_t *S, int p)
         {
             discard_i_queue(S);
         }
+
         STOP_T1;
         START_T3;
         SET_VS(0);
@@ -1491,7 +1481,6 @@ static void sabm_frame(ax25_dlsm_t *S, int p)
 
 static void disc_frame(ax25_dlsm_t *S, int p)
 {
-
     switch (S->state)
     {
 
@@ -1597,7 +1586,7 @@ static void ua_frame(ax25_dlsm_t *S, int f)
 
         if (f == 1)
         {
-            if (S->layer_3_initiated)
+            if (S->layer_3_initiated == true)
             {
                 fprintf(stderr, "Stream %d: Connected to %s\n", S->stream_id, S->addrs[PEERCALL]);
             }
@@ -1639,7 +1628,7 @@ static void ua_frame(ax25_dlsm_t *S, int f)
     case state_4_timer_recovery:
 
         establish_data_link(S);
-        S->layer_3_initiated = 0;
+        S->layer_3_initiated = false;
         enter_new_state(S, state_1_awaiting_connection);
         break;
     }
@@ -1659,7 +1648,7 @@ static void frmr_frame(ax25_dlsm_t *S)
 
         set_version_2_0(S);
         establish_data_link(S);
-        S->layer_3_initiated = 0;
+        S->layer_3_initiated = false;
         enter_new_state(S, state_1_awaiting_connection);
         break;
     }
@@ -1669,7 +1658,6 @@ static void ui_frame(ax25_dlsm_t *S, cmdres_t cr, int pf)
 {
     if (cr == cr_cmd && pf == 1)
     {
-
         switch (S->state)
         {
 
@@ -1703,9 +1691,9 @@ void dl_timer_expiry()
     {
         if (p->t1_exp != 0 && p->t1_paused_at == 0 && p->t1_exp <= now)
         {
-            p->t1_exp = 0;
-            p->t1_paused_at = 0;
-            p->t1_had_expired = 1;
+            p->t1_exp = false;
+            p->t1_paused_at = false;
+            p->t1_had_expired = true;
             t1_expiry(p);
         }
     }
@@ -1722,6 +1710,7 @@ void dl_timer_expiry()
 
 static void t1_expiry(ax25_dlsm_t *S)
 {
+    packet_t pp;
 
     switch (S->state)
     {
@@ -1745,8 +1734,6 @@ static void t1_expiry(ax25_dlsm_t *S)
             cmdres_t cmd = cr_cmd;
             int p = 1;
             int nopid = 0;
-
-            packet_t pp;
 
             S->rc = (S->rc + 1);
 
@@ -1773,8 +1760,6 @@ static void t1_expiry(ax25_dlsm_t *S)
             cmdres_t cmd = cr_cmd;
             int p = 1;
             int nopid = 0;
-
-            packet_t pp;
 
             S->rc = (S->rc + 1);
 
@@ -1808,7 +1793,7 @@ static void t1_expiry(ax25_dlsm_t *S)
             int f = 0;            // Erratum: Assuming F=0 because it is not response to P=1
             int nopid = 0;
 
-            packet_t pp = ax25_u_frame(S->addrs, cr, frame_type_U_DM, f, nopid, NULL, 0);
+            pp = ax25_u_frame(S->addrs, cr, frame_type_U_DM, f, nopid, NULL, 0);
             lm_data_request(TQ_PRIO_1_LO, pp);
 
             enter_new_state(S, state_0_disconnected);
@@ -1850,7 +1835,7 @@ static void t3_expiry(ax25_dlsm_t *S)
 static void nr_error_recovery(ax25_dlsm_t *S)
 {
     establish_data_link(S);
-    S->layer_3_initiated = 0;
+    S->layer_3_initiated = false;
 }
 
 static void establish_data_link(ax25_dlsm_t *S)
@@ -1871,10 +1856,10 @@ static void establish_data_link(ax25_dlsm_t *S)
 
 static void clear_exception_conditions(ax25_dlsm_t *S)
 {
-    S->peer_receiver_busy = 0;
-    S->reject_exception = 0;
-    S->own_receiver_busy = 0;
-    S->acknowledge_pending = 0;
+    S->peer_receiver_busy = false;
+    S->reject_exception = false;
+    S->own_receiver_busy = false;
+    S->acknowledge_pending = false;
 
     for (int n = 0; n < 128; n++)
     {
@@ -1896,7 +1881,7 @@ static void transmit_enquiry(ax25_dlsm_t *S)
 
     lm_data_request(TQ_PRIO_1_LO, pp);
 
-    S->acknowledge_pending = 0;
+    S->acknowledge_pending = false;
     START_T1;
 }
 
@@ -1908,8 +1893,7 @@ static void enquiry_response(ax25_dlsm_t *S, ax25_frame_type_t frame_type, int f
 
     if (f == 1 && (frame_type == frame_type_S_RR || frame_type == frame_type_S_RNR || frame_type == frame_type_I))
     {
-
-        if (S->own_receiver_busy)
+        if (S->own_receiver_busy == true)
         {
 
             // I'm busy.
@@ -1917,14 +1901,14 @@ static void enquiry_response(ax25_dlsm_t *S, ax25_frame_type_t frame_type, int f
             pp = ax25_s_frame(S->addrs, cr, frame_type_S_RNR, nr, f, NULL, 0);
             lm_data_request(TQ_PRIO_1_LO, pp);
 
-            S->acknowledge_pending = 0; // because we sent N(R) from V(R).
+            S->acknowledge_pending = false; // because we sent N(R) from V(R).
         }
         else
         {
             pp = ax25_s_frame(S->addrs, cr, frame_type_S_RR, nr, f, NULL, 0);
             lm_data_request(TQ_PRIO_1_LO, pp);
 
-            S->acknowledge_pending = 0;
+            S->acknowledge_pending = false;
         }
     }
     else
@@ -1935,7 +1919,7 @@ static void enquiry_response(ax25_dlsm_t *S, ax25_frame_type_t frame_type, int f
         pp = ax25_s_frame(S->addrs, cr, S->own_receiver_busy ? frame_type_S_RNR : frame_type_S_RR, nr, f, NULL, 0);
         lm_data_request(TQ_PRIO_1_LO, pp);
 
-        S->acknowledge_pending = 0;
+        S->acknowledge_pending = false;
     }
 }
 
@@ -1957,14 +1941,15 @@ static void invoke_retransmission(ax25_dlsm_t *S, int nr_input)
 
         if (S->txdata_by_ns[local_vs] != NULL)
         {
-
             cmdres_t cr = cr_cmd;
             int ns = local_vs;
             int nr = S->vr;
             int p = 0;
 
             packet_t pp = ax25_i_frame(S->addrs, cr, nr, ns, p,
-                                       S->txdata_by_ns[ns]->pid, (uint8_t *)(S->txdata_by_ns[ns]->data), S->txdata_by_ns[ns]->len);
+                                       S->txdata_by_ns[ns]->pid,
+                                       (uint8_t *)(S->txdata_by_ns[ns]->data),
+                                       S->txdata_by_ns[ns]->len);
 
             lm_data_request(TQ_PRIO_1_LO, pp);
             // Keep it around in case we need to send again.
@@ -1975,8 +1960,8 @@ static void invoke_retransmission(ax25_dlsm_t *S, int nr_input)
         {
             fprintf(stderr, "Internal Error, state=%d, need to retransmit N(S) = %d for REJ but it is not available\n", S->state, local_vs);
         }
-        local_vs = AX25MODULO(local_vs + 1);
 
+        local_vs = AX25MODULO(local_vs + 1);
     } while (local_vs != S->vs);
 
     if (sent_count == 0)
@@ -2042,7 +2027,7 @@ static void select_t1_value(ax25_dlsm_t *S)
     else
     {
 
-        if (S->t1_had_expired)
+        if (S->t1_had_expired == true)
         {
             S->t1v = S->rc * 0.25f + S->srt * 2.f;
         }
@@ -2062,10 +2047,9 @@ static void set_version_2_0(ax25_dlsm_t *S)
     S->n2_retry = g_misc_config_p->retry;
 }
 
-static int is_good_nr(ax25_dlsm_t *S, int nr)
+static bool is_good_nr(ax25_dlsm_t *S, int nr)
 {
     int adjusted_va, adjusted_nr, adjusted_vs;
-    int result;
 
     /* Adjust all values relative to V(a) before comparing so we won't have wrap around. */
 
@@ -2075,9 +2059,7 @@ static int is_good_nr(ax25_dlsm_t *S, int nr)
     adjusted_nr = adjust_by_va(nr);
     adjusted_vs = adjust_by_va(S->vs);
 
-    result = adjusted_va <= adjusted_nr && adjusted_nr <= adjusted_vs;
-
-    return result;
+    return (adjusted_va <= adjusted_nr && adjusted_nr <= adjusted_vs);
 }
 
 static void enter_new_state(ax25_dlsm_t *S, enum dlsm_state_e new_state)
@@ -2086,13 +2068,13 @@ static void enter_new_state(ax25_dlsm_t *S, enum dlsm_state_e new_state)
         S->state != state_3_connected && S->state != state_4_timer_recovery)
     {
 
-        ptt_set(OCTYPE_CON, 1); // Turn on connected indicator if configured.
+        ptt_set(OCTYPE_CON, true); // Turn on connected indicator if configured.
     }
     else if ((new_state != state_3_connected && new_state != state_4_timer_recovery) &&
              (S->state == state_3_connected || S->state == state_4_timer_recovery))
     {
 
-        ptt_set(OCTYPE_CON, 0);
+        ptt_set(OCTYPE_CON, false);
     }
 
     S->state = new_state;
@@ -2104,7 +2086,7 @@ static void start_t1(ax25_dlsm_t *S)
 
     S->t1_exp = now + S->t1v;
 
-    if (S->radio_channel_busy)
+    if (S->radio_channel_busy == true)
     {
         S->t1_paused_at = now;
     }
@@ -2113,7 +2095,7 @@ static void start_t1(ax25_dlsm_t *S)
         S->t1_paused_at = 0;
     }
 
-    S->t1_had_expired = 0;
+    S->t1_had_expired = false;
 }
 
 static void stop_t1(ax25_dlsm_t *S)
@@ -2137,23 +2119,19 @@ static void stop_t1(ax25_dlsm_t *S)
     // Normally this would be at the top but we don't know time remaining at that point.
 
     S->t1_exp = 0.0;       // now stopped.
-    S->t1_had_expired = 0; // remember that it did not expire.
+    S->t1_had_expired = false; // remember that it did not expire.
 }
 
-static int is_t1_running(ax25_dlsm_t *S)
+static bool is_t1_running(ax25_dlsm_t *S)
 {
-    int result = S->t1_exp != 0.0;
-
-    return result;
+    return (S->t1_exp != 0.0);
 }
 
 static void pause_t1(ax25_dlsm_t *S)
 {
     if (S->t1_paused_at == 0.0)
     {
-        double now = dtime_now();
-
-        S->t1_paused_at = now;
+        S->t1_paused_at = dtime_now();
     }
 }
 
@@ -2169,8 +2147,7 @@ static void resume_t1(ax25_dlsm_t *S)
     }
     else
     {
-        double now = dtime_now();
-        double paused_for_sec = now - S->t1_paused_at;
+        double paused_for_sec = (dtime_now() - S->t1_paused_at);
 
         S->t1_exp += paused_for_sec;
         S->t1_paused_at = 0.0;
@@ -2179,9 +2156,7 @@ static void resume_t1(ax25_dlsm_t *S)
 
 static void start_t3(ax25_dlsm_t *S)
 {
-    double now = dtime_now();
-
-    S->t3_exp = now + T3_DEFAULT;
+    S->t3_exp = (dtime_now() + T3_DEFAULT);
 }
 
 static void stop_t3(ax25_dlsm_t *S)

@@ -19,6 +19,7 @@ extern "C"
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "ax25_pad.h"
 #include "audio.h"
@@ -52,7 +53,7 @@ extern "C"
         rxq_type_t type;
         int client;
         int activity;
-        int status;
+        bool status;
         char addrs[AX25_ADDRS][AX25_MAX_ADDR_LEN];
     } rxq_item_t;
 

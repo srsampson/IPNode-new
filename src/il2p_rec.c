@@ -28,7 +28,6 @@ void il2p_rec_bit(int dbit)
 {
     struct il2p_context_s *F = &il2p_context;
     packet_t pp;
-    int corrected; // not used
 
     memset(F, 0, sizeof(struct il2p_context_s));
 
@@ -62,11 +61,8 @@ void il2p_rec_bit(int dbit)
 
             if (F->hc == IL2P_HEADER_SIZE + IL2P_HEADER_PARITY) // Have all of header
             {
-
                 // Fix any errors and descramble.
-                int corrected = il2p_clarify_header(F->shdr, F->uhdr);
-
-                if (corrected >= 0) // Good header.
+                if (il2p_clarify_header(F->shdr, F->uhdr) >= 0) // Good header.
                 {
                     // How much payload is expected?
                     il2p_payload_properties_t plprop;
@@ -116,6 +112,7 @@ void il2p_rec_bit(int dbit)
         break;
 
     case IL2P_DECODE:
+        int corrected;
 
         pp = il2p_decode_header_payload(F->uhdr, F->spayload, &corrected);
 

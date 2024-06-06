@@ -19,6 +19,7 @@ extern "C"
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define AX25_DESTINATION 0
 #define AX25_SOURCE 1
@@ -85,7 +86,7 @@ extern "C"
     packet_t ax25_new(void);
     packet_t ax25_from_frame(uint8_t *, int);
     void ax25_delete(packet_t);
-    int ax25_parse_addr(int, char *, char *, int *);
+    bool ax25_parse_addr(int, char *, char *, int *);
     void ax25_get_addr_with_ssid(packet_t, int, char *);
     void ax25_get_addr_no_ssid(packet_t, int, char *);
     int ax25_get_ssid(packet_t, int);

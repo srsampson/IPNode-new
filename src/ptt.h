@@ -21,7 +21,7 @@ extern "C"
 #include "audio.h"
 
     void ptt_init(struct audio_s *);
-    void ptt_set(int, int);
+    void ptt_set(int, bool);
     void ptt_term(void);
     int get_input(int);
 

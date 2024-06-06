@@ -175,7 +175,7 @@ int il2p_type_1_header(packet_t pp, uint8_t *hdr)
 
     uint8_t *a = (uint8_t *)dst_addr;
 
-    for (int i = 0; *a != '\0'; i++, a++)
+    for (int i = 0; *a != 0; i++, a++)
     {
         if (*a < ' ' || *a > '_')
         {
@@ -187,7 +187,7 @@ int il2p_type_1_header(packet_t pp, uint8_t *hdr)
 
     a = (uint8_t *)src_addr;
 
-    for (int i = 6; *a != '\0'; i++, a++)
+    for (int i = 6; *a != 0; i++, a++)
     {
         if (*a < ' ' || *a > '_')
         {
@@ -200,12 +200,11 @@ int il2p_type_1_header(packet_t pp, uint8_t *hdr)
     // Byte 12 has DEST SSID in upper nibble and SRC SSID in lower nibble and
     hdr[12] = (dst_ssid << 4) | src_ssid;
 
-    ax25_frame_type_t frame_type;
     cmdres_t cr; // command or response.
     int pf;      // Poll/Final.
     int nr, ns;  // Sequence numbers.
 
-    frame_type = ax25_frame_type(pp, &cr, &pf, &nr, &ns);
+    ax25_frame_type_t frame_type = ax25_frame_type(pp, &cr, &pf, &nr, &ns);
 
     switch (frame_type)
     {
@@ -336,9 +335,8 @@ int il2p_type_1_header(packet_t pp, uint8_t *hdr)
     SET_HDR_TYPE(hdr, 1);  // Only HDR 1 is used
 
     uint8_t *pinfo;
-    int info_len;
 
-    info_len = ax25_get_info(pp, &pinfo);
+    int info_len = ax25_get_info(pp, &pinfo);
 
     if (info_len < 0 || info_len > IL2P_MAX_PAYLOAD_SIZE)
     {
@@ -421,7 +419,6 @@ packet_t il2p_decode_header_type_1(uint8_t *hdr, int num_sym_changed)
 
     if (pid == 0)
     {
-
         // 'S' frame.
         // The control field contains: P/F N(R) C S S
 
@@ -454,7 +451,6 @@ packet_t il2p_decode_header_type_1(uint8_t *hdr, int num_sym_changed)
     }
     else if (pid == 1)
     {
-
         // 'U' frame other than 'UI'.
         // The control field contains: P/F OPCODE{3) C x x
 
@@ -495,7 +491,6 @@ packet_t il2p_decode_header_type_1(uint8_t *hdr, int num_sym_changed)
     }
     else if (ui)
     {
-
         // 'UI' frame.
         // The control field contains: P/F OPCODE{3) C x x
 
