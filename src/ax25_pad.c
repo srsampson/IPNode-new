@@ -610,7 +610,7 @@ packet_t ax25_s_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
 
     p = this_p->frame_data + this_p->frame_len;
 
-    if (pf)
+    if (pf == 1)
         ctrl |= 0x10;
 
     ctrl |= nr << 5;

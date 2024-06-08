@@ -110,9 +110,9 @@ static ax25_dlsm_t *list_head = NULL;
 
 typedef struct reg_callsign_s
 {
+    struct reg_callsign_s *next;
     char callsign[AX25_MAX_ADDR_LEN];
     int client;
-    struct reg_callsign_s *next;
     int magic;
 } reg_callsign_t;
 
@@ -158,8 +158,8 @@ static int ptt_status;
 static void dl_data_indication(ax25_dlsm_t *, int, uint8_t *, int);
 static void i_frame(ax25_dlsm_t *S, cmdres_t, int, int, int, int, uint8_t *, int);
 static void i_frame_continued(ax25_dlsm_t *, int, int, int, uint8_t *, int);
-static int is_ns_in_window(ax25_dlsm_t *, int);
-static void send_srej_frames(ax25_dlsm_t *, int *, int, int);
+static bool is_ns_in_window(ax25_dlsm_t *, int);
+static void send_srej_frames(ax25_dlsm_t *, int *, int, bool);
 static int resend_for_srej(ax25_dlsm_t *, int, uint8_t *, int);
 static void rr_rnr_frame(ax25_dlsm_t *, bool, cmdres_t, int, int);
 static void rej_frame(ax25_dlsm_t *, cmdres_t, int, int);
@@ -225,9 +225,7 @@ static void i_frame_pop_off_queue(ax25_dlsm_t *S)
     case state_1_awaiting_connection:
         if (S->layer_3_initiated == true)
         {
-            cdata_t *txdata;
-
-            txdata = S->i_frame_queue; // Remove from head of list.
+            cdata_t *txdata = S->i_frame_queue; // Remove from head of list.
             S->i_frame_queue = txdata->next;
             cdata_delete(txdata);
         }
@@ -325,7 +323,7 @@ static ax25_dlsm_t *get_link_handle(char addrs[AX25_ADDRS][AX25_MAX_ADDR_LEN], i
 
     if (create == false)
     {
-        return (NULL);
+        return NULL;
     }
 
     // If it came from the radio, search for destination our registered callsign list.
@@ -334,10 +332,9 @@ static ax25_dlsm_t *get_link_handle(char addrs[AX25_ADDRS][AX25_MAX_ADDR_LEN], i
 
     if (client == -1) // from the radio.
     {
-        reg_callsign_t *r, *found;
+        reg_callsign_t *found = NULL;
 
-        found = NULL;
-        for (r = reg_callsign_list; r != NULL && found == NULL; r = r->next)
+        for (reg_callsign_t *r = reg_callsign_list; r != NULL && found == NULL; r = r->next)
         {
 
             if (strcmp(addrs[AX25_DESTINATION], r->callsign) == 0)
@@ -349,7 +346,7 @@ static ax25_dlsm_t *get_link_handle(char addrs[AX25_ADDRS][AX25_MAX_ADDR_LEN], i
 
         if (found == NULL)
         {
-            return (NULL);
+            return NULL;
         }
     }
 
@@ -493,9 +490,7 @@ void lm_channel_busy(rxq_item_t *E)
      * This must be applied to all data link state machines associated with that radio channel.
      */
 
-    ax25_dlsm_t *S;
-
-    for (S = list_head; S != NULL; S = S->next)
+    for (ax25_dlsm_t *S = list_head; S != NULL; S = S->next)
     {
         if ((busy == true) && (S->radio_channel_busy == false))
         {
@@ -512,9 +507,7 @@ void lm_channel_busy(rxq_item_t *E)
 
 void lm_seize_confirm(rxq_item_t *E)
 {
-    ax25_dlsm_t *S;
-
-    for (S = list_head; S != NULL; S = S->next)
+    for (ax25_dlsm_t *S = list_head; S != NULL; S = S->next)
     {
         switch (S->state)
         {
@@ -546,12 +539,10 @@ void lm_seize_confirm(rxq_item_t *E)
  */
 void lm_data_indication(rxq_item_t *E)
 {
-    ax25_frame_type_t ftype;
     cmdres_t cr;
     int pf;
     int nr;
     int ns;
-    ax25_dlsm_t *S;
     int client_not_applicable = -1;
 
     if (E->pp == NULL)
@@ -567,9 +558,9 @@ void lm_data_indication(rxq_item_t *E)
         ax25_get_addr_with_ssid(E->pp, n, E->addrs[n]);
     }
 
-    ftype = ax25_frame_type(E->pp, &cr, &pf, &nr, &ns);
+    ax25_frame_type_t ftype = ax25_frame_type(E->pp, &cr, &pf, &nr, &ns);
 
-    S = get_link_handle(E->addrs, client_not_applicable,
+    ax25_dlsm_t *S = get_link_handle(E->addrs, client_not_applicable,
                         (ftype == frame_type_U_SABM) | (ftype == frame_type_U_SABME));
 
     if (S == NULL)
@@ -638,7 +629,6 @@ void lm_data_indication(rxq_item_t *E)
 
     switch (ftype)
     {
-
     case frame_type_I: // Information
     {
         uint8_t *info_ptr;
@@ -837,7 +827,7 @@ static void i_frame_continued(ax25_dlsm_t *S, int p, int ns, int pid, uint8_t *i
             SET_VR(AX25MODULO(S->vr + 1));
         }
 
-        if (p)
+        if (p != 0)
         {
             int f = 1;
             int nr = S->vr;       // Next expected sequence number.
@@ -849,7 +839,6 @@ static void i_frame_continued(ax25_dlsm_t *S, int p, int ns, int pid, uint8_t *i
         }
         else if (S->acknowledge_pending == false)
         {
-
             S->acknowledge_pending = true;
 
             lm_seize_request();
@@ -857,7 +846,7 @@ static void i_frame_continued(ax25_dlsm_t *S, int p, int ns, int pid, uint8_t *i
     }
     else if (S->reject_exception == true)
     {
-        if (p)
+        if (p != 0)
         {
             int f = 1;
             int nr = S->vr;       // Next expected sequence number.
@@ -872,7 +861,7 @@ static void i_frame_continued(ax25_dlsm_t *S, int p, int ns, int pid, uint8_t *i
     {
         fprintf(stderr, "INTERNAL ERROR: Should not be sending SREJ in basic (modulo 8) mode.\n");
 
-        if (is_ns_in_window(S, ns))
+        if (is_ns_in_window(S, ns) == true)
         {
             if (S->rxdata_by_ns[ns] != NULL)
             {
@@ -900,7 +889,7 @@ static void i_frame_continued(ax25_dlsm_t *S, int p, int ns, int pid, uint8_t *i
             {
                 int ask_for_resend[8];
                 int ask_resend_count = 0;
-                int allow_f1 = 1; // F=1 from X.25 2.4.6.4 b) 3)
+                bool allow_f1 = true; // F=1 from X.25 2.4.6.4 b) 3)
 
                 // send only for this gap, not cumulative from V(R).
 
@@ -934,7 +923,7 @@ static void i_frame_continued(ax25_dlsm_t *S, int p, int ns, int pid, uint8_t *i
     }
 }
 
-static int is_ns_in_window(ax25_dlsm_t *S, int ns)
+static bool is_ns_in_window(ax25_dlsm_t *S, int ns)
 {
     /* Shift all values relative to V(R) before comparing so we won't have wrap around. */
 
@@ -947,7 +936,7 @@ static int is_ns_in_window(ax25_dlsm_t *S, int ns)
     return (adjusted_vr < adjusted_ns) && (adjusted_ns < adjusted_vrpk);
 }
 
-static void send_srej_frames(ax25_dlsm_t *S, int *resend, int count, int allow_f1)
+static void send_srej_frames(ax25_dlsm_t *S, int *resend, int count, bool allow_f1)
 {
     if (count <= 0)
     {
@@ -985,9 +974,9 @@ static void send_srej_frames(ax25_dlsm_t *S, int *resend, int count, int allow_f
     for (int i = 0; i < count; i++)
     {
         int nr = resend[i];
-        int f = allow_f1 && (nr == S->vr);  // Set if we are ack-ing one before.
+        int f = ((allow_f1 == true) && (nr == S->vr)) ? 1 : 0;  // Set if we are ack-ing one before.
 
-        if (f)
+        if (f == 1)
         {
             S->acknowledge_pending = false;
         }
@@ -1008,7 +997,6 @@ static void rr_rnr_frame(ax25_dlsm_t *S, bool ready, cmdres_t cr, int pf, int nr
 {
     switch (S->state)
     {
-
     case state_0_disconnected:
 
         if (cr == cr_cmd)
@@ -1925,16 +1913,14 @@ static void enquiry_response(ax25_dlsm_t *S, ax25_frame_type_t frame_type, int f
 
 static void invoke_retransmission(ax25_dlsm_t *S, int nr_input)
 {
-    int local_vs;
-    int sent_count = 0;
-
     if (S->txdata_by_ns[nr_input] == NULL)
     {
         fprintf(stderr, "Internal Error, Can't resend starting with N(S) = %d.  It is not available\n", nr_input);
         return;
     }
 
-    local_vs = nr_input;
+    int local_vs = nr_input;
+    int sent_count = 0;
 
     do
     {
@@ -1972,7 +1958,7 @@ static void invoke_retransmission(ax25_dlsm_t *S, int nr_input)
 
 static void check_i_frame_ackd(ax25_dlsm_t *S, int nr)
 {
-    if (S->peer_receiver_busy)
+    if (S->peer_receiver_busy == true)
     {
         SET_VA(nr);
         START_T3;
@@ -2167,9 +2153,8 @@ static void stop_t3(ax25_dlsm_t *S)
 double ax25_link_get_next_timer_expiry()
 {
     double tnext = 0.0;
-    ax25_dlsm_t *p;
 
-    for (p = list_head; p != NULL; p = p->next)
+    for (ax25_dlsm_t *p = list_head; p != NULL; p = p->next)
     {
 
         // Consider if running and not paused.
