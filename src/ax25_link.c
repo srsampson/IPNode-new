@@ -73,17 +73,17 @@ typedef struct ax25_dlsm_s
     bool reject_exception;
     bool own_receiver_busy;
     bool acknowledge_pending;
-    float srt;
-    float t1v;
+    double srt;
+    double t1v;
 
 #define INIT_T1V_SRT                 \
-    S->t1v = g_misc_config_p->frack; \
-    S->srt = S->t1v / 2.0f;
+    S->t1v = (double) (g_misc_config_p->frack); \
+    S->srt = S->t1v / 2.0;
 
     bool radio_channel_busy;
     double t1_exp;
     double t1_paused_at;
-    float t1_remaining_when_last_stopped;
+    double t1_remaining_when_last_stopped;
     bool t1_had_expired;
     double t3_exp;
 
@@ -380,7 +380,7 @@ static ax25_dlsm_t *get_link_handle(char addrs[AX25_ADDRS][AX25_MAX_ADDR_LEN], i
     }
 
     p->state = state_0_disconnected;
-    p->t1_remaining_when_last_stopped = -999; // Invalid, don't use.
+    p->t1_remaining_when_last_stopped = -999.0; // Invalid, don't use.
 
     p->magic2 = MAGIC2;
     p->magic3 = MAGIC3;
@@ -696,7 +696,6 @@ void lm_data_indication(rxq_item_t *E)
     if (S->i_frame_queue != NULL && (S->state == state_3_connected || S->state == state_4_timer_recovery) &&
         (S->peer_receiver_busy == false) && WITHIN_WINDOW_SIZE(S))
     {
-
         // S->acknowledge_pending = 1;
         lm_seize_request();
     }
@@ -1993,33 +1992,33 @@ static void check_need_for_response(ax25_dlsm_t *S, ax25_frame_type_t frame_type
 
 static void select_t1_value(ax25_dlsm_t *S)
 {
-    float old_srt = S->srt;
+    double old_srt = S->srt;
 
     if (S->rc == 0)
     {
 
-        if (S->t1_remaining_when_last_stopped >= 0)
+        if (S->t1_remaining_when_last_stopped >= 0.0)
         { // Negative means invalid, don't use it.
-            S->srt = 7.f / 8.f * S->srt + 1.f / 8.f * (S->t1v - S->t1_remaining_when_last_stopped);
+            S->srt = 7.0 / 8.0 * S->srt + 1.0 / 8.0 * (S->t1v - S->t1_remaining_when_last_stopped);
         }
 
-        if (S->srt < 1.f)
+        if (S->srt < 1.0)
         {
-            S->srt = 1.f;
+            S->srt = 1.0;
         }
 
-        S->t1v = S->srt * 2.f;
+        S->t1v = S->srt * 2.0;
     }
     else
     {
 
         if (S->t1_had_expired == true)
         {
-            S->t1v = S->rc * 0.25f + S->srt * 2.f;
+            S->t1v = S->rc * 0.25 + S->srt * 2.0;
         }
     }
 
-    if (S->t1v < 0.99f || S->t1v > 30.f)
+    if (S->t1v < 0.99 || S->t1v > 30.0)
     {
         fprintf(stderr, "INTERNAL ERROR?  Stream %d: select_t1_value, rc = %d, t1 remaining = %.3f, old srt = %.3f, new srt = %.3f, Extreme new t1v = %.3f\n",
                 S->stream_id, S->rc, S->t1_remaining_when_last_stopped, old_srt, S->srt, S->t1v);
@@ -2098,8 +2097,8 @@ static void stop_t1(ax25_dlsm_t *S)
     {
         S->t1_remaining_when_last_stopped = S->t1_exp - now;
 
-        if (S->t1_remaining_when_last_stopped < 0)
-            S->t1_remaining_when_last_stopped = 0;
+        if (S->t1_remaining_when_last_stopped < 0.0)
+            S->t1_remaining_when_last_stopped = 0.0;
     }
 
     // Normally this would be at the top but we don't know time remaining at that point.

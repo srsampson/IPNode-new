@@ -447,7 +447,7 @@ packet_t ax25_u_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
 {
     int ctrl = 0;
     unsigned int t = 999; // 1 = must be cmd, 0 = must be response, 2 = can be either.
-    int i = 0;            // Is Info part allowed?
+    bool info = false;            // Is Info part allowed?
 
     packet_t this_p = ax25_new();
 
@@ -456,7 +456,7 @@ packet_t ax25_u_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
 
     this_p->modulo = 0;
 
-    if (!set_addrs(this_p, addrs, cr))
+    if (set_addrs(this_p, addrs, cr) == false)
     {
         fprintf(stderr, "Internal error in %s: Could not set addresses for U frame.\n", __func__);
         ax25_delete(this_p);
@@ -484,12 +484,12 @@ packet_t ax25_u_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
     case frame_type_U_FRMR:
         ctrl = 0x87;
         t = 0;
-        i = 1;
+        info = true;
         break;
     case frame_type_U_UI:
         ctrl = 0x03;
         t = 2;
-        i = 1;
+        info = true;
         break;
 
     default:
@@ -499,7 +499,7 @@ packet_t ax25_u_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
         break;
     }
 
-    if (pf)
+    if (pf != 0)
         ctrl |= 0x10;
 
     if (t != 2)
@@ -527,7 +527,7 @@ packet_t ax25_u_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
         this_p->frame_len++;
     }
 
-    if (i)
+    if (info == true)
     {
         if (pinfo != NULL && info_len > 0)
         {
@@ -550,27 +550,26 @@ packet_t ax25_u_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
         }
     }
 
-    *p = '\0';
+    *p = 0;
 
     return this_p;
 }
 
 packet_t ax25_s_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_type_t ftype, int nr, int pf, uint8_t *pinfo, int info_len)
 {
-    packet_t this_p;
     uint8_t *p;
     uint8_t ctrl = 0;
 
-    this_p = ax25_new();
+    packet_t this_p = ax25_new();
 
     if (this_p == NULL)
-        return (NULL);
+        return NULL;
 
     if (set_addrs(this_p, addrs, cr) == false)
     {
         fprintf(stderr, "Internal error in %s: Could not set addresses for S frame.\n", __func__);
         ax25_delete(this_p);
-        return (NULL);
+        return NULL;
     }
 
     if (nr < 0 || nr >= 8)
@@ -604,7 +603,7 @@ packet_t ax25_s_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, ax25_frame_t
     default:
         fprintf(stderr, "Internal error in %s: Invalid ftype %d for S frame.\n", __func__, ftype);
         ax25_delete(this_p);
-        return (NULL);
+        return NULL;
         break;
     }
 
@@ -654,13 +653,13 @@ packet_t ax25_i_frame(char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr, int nr, int 
     this_p = ax25_new();
 
     if (this_p == NULL)
-        return (NULL);
+        return NULL;
 
     if (set_addrs(this_p, addrs, cr) == false)
     {
         fprintf(stderr, "Internal error in %s: Could not set addresses for I frame.\n", __func__);
         ax25_delete(this_p);
-        return (NULL);
+        return NULL;
     }
 
     if (nr < 0 || nr >= 8)
@@ -719,9 +718,7 @@ static bool set_addrs(packet_t pp, char addrs[][AX25_MAX_ADDR_LEN], cmdres_t cr)
         char oaddr[AX25_MAX_ADDR_LEN];
         int ssid;
 
-        bool ok = ax25_parse_addr(n, addrs[n], oaddr, &ssid);
-
-        if (ok == false)
+        if (ax25_parse_addr(n, addrs[n], oaddr, &ssid) == false)
             return false;
 
         // Fill in address.
