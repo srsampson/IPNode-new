@@ -181,9 +181,9 @@ void rx_queue_seize_confirm()
     append_to_rx_queue(pnew);
 }
 
-int rx_queue_wait_while_empty(double timeout)
+bool rx_queue_wait_while_empty(double timeout)
 {
-    int timed_out_result = 0;
+    bool timed_out_result = false;
 
     int err = pthread_mutex_lock(&rx_queue_mutex);
 
@@ -208,7 +208,7 @@ int rx_queue_wait_while_empty(double timeout)
 
             if (err == ETIMEDOUT)
             {
-                timed_out_result = 1;
+                timed_out_result = true;
             }
         }
         else

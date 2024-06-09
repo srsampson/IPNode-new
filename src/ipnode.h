@@ -43,7 +43,7 @@ extern "C"
 /*
  * Idle Flag
  */
-#define FLAG 0b00001111     // 1200 / 4 = 300 baud BPSK
+#define FLAG 0b00000000     // 00001111 1200 / 4 = 300 baud BPSK
 
 #define Mode_BPSK 0
 #define Mode_QPSK 1

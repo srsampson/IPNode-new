@@ -334,7 +334,7 @@ static int transmit_queue_count(int prio, char *source, char *dest, int bytes)
 
         if (count_it == true)
         {
-            if (bytes)
+            if (bytes != 0)
             {
                 n += ax25_get_frame_len(pp);
             }

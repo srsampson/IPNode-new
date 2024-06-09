@@ -82,11 +82,7 @@ static void rx_process()
 
     while (1)
     {
-        double timeout_value = ax25_link_get_next_timer_expiry();
-
-        int timed_out = rx_queue_wait_while_empty(timeout_value);
-
-        if (timed_out)
+        if (rx_queue_wait_while_empty(ax25_link_get_next_timer_expiry()) == true)
         {
             dl_timer_expiry();
         }

@@ -61,7 +61,7 @@ extern "C"
     void rx_queue_rec_frame(packet_t);
     void rx_queue_channel_busy(int, int);
     void rx_queue_seize_confirm(void);
-    int rx_queue_wait_while_empty(double);
+    bool rx_queue_wait_while_empty(double);
     struct rx_queue_item_s *rx_queue_remove(void);
     void rx_queue_delete(struct rx_queue_item_s *);
     cdata_t *cdata_new(int, uint8_t *, int);
