@@ -20,7 +20,7 @@ The GPIO will need PTT, DCD, Connect, and Sync as interface lines.
 
 <img src="docs/qpsk.png" width="450">
 
-This is 1 kHz +/- 800 Hz or 1600 Hz bandwidth, so the emission symbol would be **1K60J2D**.
+This is 1 kHz +/- 800 Hz or 1600 Hz bandwidth, so the emission symbol would be **1K60J2D**. The little pip in the center is the unscrambled preamble/postample.
 ### Startup
 The ```ipnode``` program runs in a loop with three threads (tx, rx, and kiss). It will read the config file ```ipnode.conf``` if available, and begin running.
 ```
